@@ -35,6 +35,18 @@ library(kableExtra)
 
 ## Introduction
 
+Survival analysis has an important place in biomedical research, facilitating the exploration of time-to-event outcomes such as mortality or relapse. 
+
+An essential component in exploring the genetic basis of diseases involves investigating Single Nucleotide Polymorphisms (SNPs). These occasional variations in a single letter of DNA can have a significant impact on susceptibility to certain diseases or on response to medical treatments. 
+
+Integrating SNPs into survival analysis enables the discovery of genetic factors linked to time-to-event outcomes, shedding light on the genetic factors that influence disease progression and other critical events.
+
+However, the major challenge is that our genome is made up of millions of SNPs, making large-scale survival analysis (GWAS) extremely complex. The existing software options for conducting such analyses are limited in several aspects (the need to interact with raw data, software not suited for survival analysis, and long execution times that hinder scalability). Consequently, researchers often face practical difficulties when conducting large-scale survival analyses.
+
+Enter gwasurvivr, an R/Bioconductor package designed to surmount these challenges. This library offers a significant advancement in allowing researchers to perform survival analysis on large SNP datasets with remarkable efficiency and accuracy and with multiple file input formats such as VCF, IMPUTE2 or PLINK. 
+
+In this paper, we thoroughly examine the functionalities of GWASurvivr and offer an extensive evaluation of its operational mechanisms and effectiveness in unraveling the genetic factors that influence disease survival.
+
 ## Methods
 
 ## Datasets
