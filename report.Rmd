@@ -53,7 +53,16 @@ In this paper, we thoroughly examine the functionalities of gwasurvivr and offer
 
 ## Results
 
-Michigan Imputation Server pre-phases typed genotypes using HAPI-UR, SHAPEIT, or EAGLE (default is EAGLE2), imputes using Minimac3 imputation engine and outputs Blocked GNU Zip Format VCF files (`.vcf.gz`). These `vcf.gz` files are used as input for `gwasurvivr`. Process of importing `vcf.gz` and phenotype files from `gwasurvivr` is shown below.
+```{r benchmark, echo=F}
+knitr::include_graphics("benchmark.png")
+```
+
+TO DO:
+[desribe results (performance), parallelization, server implementation viability]
+
+Michigan Imputation Server pre-phases typed genotypes using HAPI-UR, SHAPEIT, or EAGLE (default is EAGLE2), imputes using Minimac3 imputation engine and outputs Blocked GNU Zip Format VCF files (`.vcf.gz`). These `vcf.gz` files with addition of `.txt` files representing phenotype are used as an input for cox regression in `gwasurvivr` package.
+
+The exemplary data can be extracted from the package using `system.file` function in according manner.
 
 ```{r data loading, echo=T}
 vcf.file <- system.file(package="gwasurvivr",
@@ -64,7 +73,7 @@ pheno.fl <- system.file(package="gwasurvivr",
                         "simulated_pheno.txt")
 ```
 
-The simulated phenotype file can be represented in the table.
+Simulated phenotype file used as covariate file during regression can be represented in the table as shown below.
 
 ```{r data showcase, echo=F}
 pheno.file <- read.table(pheno.fl,
@@ -72,15 +81,14 @@ pheno.file <- read.table(pheno.fl,
                          header=TRUE,
                          stringsAsFactors = FALSE)
 head(pheno.file) %>% kable(booktabs=F, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
-```
 
-Now using phenotype file as covariate file and given VCF file we can run `michiganCoxSurv` wrapper for Cox regression model.
-
-```{r cox regression, echo=T, eval=F, cache=T}
 #decoding sex into binary format
 pheno.file$SexFemale <- ifelse(pheno.file$sex=="female", 1L, 0L)
+```
 
-#running Cox regression
+Now using phenotype file as covariate file and given loaded VCF file we can run `michiganCoxSurv` function, which is a wrapper for Cox regression model (before running the function, `sex` column was encoded into binary format).  
+
+```{r cox regression, echo=T, eval=F, cache=T}
 michiganCoxSurv(vcf.file=vcf.file,
                 covariate.file=pheno.file,
                 id.column="ID_2",
@@ -97,17 +105,57 @@ michiganCoxSurv(vcf.file=vcf.file,
                 clusterObj=NULL) #for setting up cluster for computations
 ```
 
-Functions saves the outputed model with the .coxph extension as a seperate file as well as SNPs removed (pvalues below 0.05) in the .snps_removed file.
-Accessed results of the performed regression are showcased below (`print covs = "only"` was chosen as a printing option).
+Functions saves the outputed model with the `.coxph` extension as a seperate file as well as SNPs removed (due to low variance or user defined thresholds) in the `.snps_removed` file. Accessed results of the performed regression are showcased below (`print covs = "only"` was chosen as a printing option, which omits some covariates).
 
 ```{r coxph results, echo=F}
 michigan_only <- read.table("michigan_only.coxph", sep="\t", header=TRUE, stringsAsFactors = FALSE) %>% t()
 kable(michigan_only, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
 ```
 
-To decipher most column names and extract knowledge from the output table in the appendix section explains the meaning of certain variables.
+To decipher most column names and extract knowledge from the output table in the appendix section explains the meaning of certain variables. 
+
+Column PVALUE holds results for significance test of the SNP covariates (rest of the results is omitted by the printing option). It can be stated that on level of significance 0.05 SNP covariates (all pvalues above 0.05) can be deemed as insignificant as $H_0: coef_i = 0$. Drawn conclusion seems sensible as phenotype file was generated randomly.  
+
+Package offers also adding SNP covariate interactions during the modelling. Setting option `inter.term` to name(s) of the variable(s), in our case `DrugTxYes`, will include these interactions during training of the regression models. Table with all (`print.covs="all"`) information about covariates is attached in the appendix. Additionally pvalues for the significance test, hazard ratios and confidence intervals for them, Z scores, coefficents and their standard errors can be obtained for all the covariates. 
+
+Analyzing the full table of the results gives us a whole picture about performance of the covariates. Looking again at pvalues, now it's clear that only `age` can be deemed significant in this statistical inference framework.
+
+```{r coxph interactions, echo=F, cache=T}
+michiganCoxSurv(vcf.file=vcf.file,
+                covariate.file=pheno.file,
+                id.column="ID_2",
+                time.to.event="time",
+                event="event",
+                covariates=c("age", "SexFemale", "DrugTxYes"),
+                inter.term="DrugTxYes",
+                print.covs="all",
+                out.file="michigan_intx_some",
+                r2.filter=0.3,
+                maf.filter=0.005,
+                chunk.size=100,
+                verbose=F,
+                clusterObj=NULL)
+```
+
+Creators of the package included three more modifications of Cox proportional hazard regression for different data types. 
+
+`sangerCoxSurv`is the function which handles data formats obtained from Sanger Imputation Server, which pre-phases typed genotypes using either SHAPEIT or EAGLE, imputes genotypes using PBWT algorithm and outputs a .vcf.gz file for each chromosome. This cox regression wrapper allows the user to filter on info score (imputation quality metric) and minor allele frequency from the reference panel used for imputation using `RefPanelAF` as the input arguement for `maf.filter`. Users are also provided with the sample minor allele frequency in the output file. Syntax of the function and overall use cases are the same as in previously described `michiganCoxSurv`.
+
+Another format which is handled by the package is IMPUTE2 generated output. IMPUTE2 is a genotype imputation and haplotype phasing program. It outputs 6 files for each chromosome chunk imputed, but only 2 of these files are required for analyses using `gwasurviv`. Loading and pre-processing of the genetic and phenotypic data is conducted as before. To perform survival analysis using IMPUTE2 the function arguments are very similar to `michiganCoxSurv` and `sangerCoxSurv`, however the function now takes a chromosome argument. This is needed to properly annotate the file output with the chromosome that these SNPs are in. Moreover, function `gdsCoxSurv` allows to performs survival analysis on genetic data, which was converted from IMPUTE2 format to GDS format.
+
+Additionaly, authors are also mentioning wrapper `plinkCoxSurv`, which handles data in PLINK format (`.BED`, `.BIM` and `.FAM` files). Pre-processing, syntax and usage of the function is identical to previously desribed solutions. 
 
 ## Conclusions
+
+`gwasurvivr`, an R package tailored for the analysis of survival outcomes in Genome-Wide Association Studies (GWAS), offers several notable advantages. It seamlessly integrates GWAS results with survival analysis, making it an accessible tool for researchers seeking to explore the genetic variants' influence on survival outcomes. 
+
+Its seems user-friendly at first glance, as use cases are described in the vignette, but syntax and storage of the output in the external file makes it more gimmicky. Moreover, output is just a table with some metrics not a proper coxph object, which makes it harder to do inference and integrate it with different software concerning survival analysis.  
+
+One of its main strengths is inclusion of handling diverse data format used for survival analysis inference, but then no visualization tools were added on top of cox regression wrappers.
+
+Capacity to handle extensive datasets was the main focus of the developers. The goal was clearly achieved as the package is overall fast, has premium options for fast computing, parallelization and setting up clusters to speed up the fitting process.   
+
+In conclusion, `gwasurvivr` is a viable options for researchers trying to incorporate genom-wide studies into survival analysis framework due to fast compuation time and fairly easy syntax. However, it has some limitations, primarily focusing on compatibility with other survival analysis framework and requiring a working knowledge of R, data preparation, and potentially resource-intensive computations. Users should also keep an eye on updates and maintenance, as with any R package.
 
 ## Appendix
 
@@ -134,3 +182,8 @@ To decipher most column names and extract knowledge from the output table in the
 |Z |	Z-statistic|
 |N |	Number of individuals in sample being tested|
 |NEVENT |	Number of events that occurred in sample being tested|
+
+```{r coxph results int, echo=F}
+michigan_some <- read.table("michigan_intx_some.coxph", sep="\t", header=TRUE, stringsAsFactors = FALSE) %>% t()
+kable(michigan_some, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
+```
