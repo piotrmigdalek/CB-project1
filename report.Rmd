@@ -20,13 +20,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #for installing the packages
 
-#install.packages("tinytex")
-#tinytex::install_tinytex()
-#if (!requireNamespace("BiocManager", quietly=TRUE))
-#    install.packages("BiocManager")
-#BiocManager::install("gwasurvivr", version = "devel")
-#install.packages("devtools")
-#devtools::install_github("kupietz/kableExtra")
+install.packages("tinytex")
+tinytex::install_tinytex()
+if (!requireNamespace("BiocManager", quietly=TRUE))
+   install.packages("BiocManager")
+BiocManager::install("gwasurvivr", version = "devel")
+install.packages("devtools")
+devtools::install_github("kupietz/kableExtra")
 
 library(gwasurvivr)
 options("gwasurvivr.cores"=4) 
@@ -48,6 +48,32 @@ gwasurvivr, an R/Bioconductor package was designed to surmount these challenges.
 In this paper, we thoroughly examine the functionalities of gwasurvivr and offer an extensive evaluation of its operational mechanisms and effectiveness in unraveling the genetic factors that influence disease survival.
 
 ## Methods
+
+gwasurvivr implements a very common survival analysis model : the Cox proportional hazards regression model. This part focuses on the theory and algorithms behind survival analysis, Cox proportional hazards model and the way the authors implemented it.
+
+Survival Analysis is a method for analyzing time-to-event data, i.e. to estimate the time until an event occurs. We call this amount of time the survival time. One key concept in survival analysis is the hazard function $h(t)$. This function represents the instantaneous potential at time t for getting the event, given survival up to time t. The hazard function is really useful because it allows us to draw the survival curve S(t) which is is the probability of the survival time to be greater or equal to t. Most of the time we empirically compute the survival curve from the data, thus obtaining a Kaplan-Meier curve. So for instance if we take t equals to 5 weeks, we will read on the Kaplan-Meier curve the probability of the survival time to be greater or equal to 5 weeks.
+
+![](Capture d’écran du 2023-10-05 18-24-24.png)
+
+But in survival analysis we are not so much interested in survival time as in what influences this survival time like taking a drug, smoking, having antecedents\... The Cox proportional hazards regression model allows us to dos so : the new hazard function does not depend only on the time but also on some factors that may influence survival time. We note the new hazard function as follow :
+
+$h(t, X) = h_{0}(t)\exp(Xβ)$
+
+$h_{0}(t)$ is the baseline hazard depending only on the time, $X$ is the vector of factors of an individual (note that those factors do not depend on time) and $β$ is the vector of the coefficients associated with those factors. For instance, if we have $age$ and $sex$ as two explanatory factors, the coefficients associated with those factors $β1$ and $β2$, and $β0$ the intercept,the instantaneous potential at time t for getting the event, given survival up to time t and $age$ and $sex$ is :
+
+$h(t, X) = h_{0}(t)exp(β_{0} + β_{1}.age+β_{2}.sexe)$
+
+In order to estimate $β$, we use the partial log-likelihood. First let's understand the partial likelihood :
+
+$PL(β)=\prod_{i:\delta_{i}=1}^{}\frac{exp(\sum_{j=1}^{p}x_{ij}\beta_{j})}{\sum_{i':y_{i'}\ge y_{i}}^{}exp(\sum_{j=1}^{p}x_{i'j}\beta_{j})}$
+
+Where $δ$ is the set of individuals for which an event has occurred at time $yi$, and the $i'$ are all the at risk individuals at time $yi$. We can thus interpret the fraction as the probability of the individual who died to actually die, as the probability of observing what we observed. The partial likelihood is just the product for each individual died at time $yi$. Finally we obtain the partial log-likelihood by taking the log of the partial likelihood :
+
+$L(\beta)=\sum_{i:\delta_{i}=1}^{}X_{i}^{T}\beta-\log(\sum_{i':y_{i'}\ge y_{i}}^{}exp(X_{i'}^{T}\beta))$
+
+By optimizing this function over $β$ we will maximize the probability of observing the actual observations.
+
+The authors are interesting in conducting survival analyses with million of SNPs, so the optimization of the partial likelihood takes an important number of iterations in the original R-package *survival* (coxph, Therneau and Grambsch, 2000). In order to reduce the number of iterations, the authors decided to modify the *survival* R-package : first the Cox proportional hazard model is fitted with all the non-genetic covariates (i.e. the SNP is not included). Then those estimate parameters are used as initial points for fitting the model with the SNP covariate.
 
 ## Datasets
 
