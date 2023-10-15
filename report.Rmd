@@ -3,16 +3,20 @@ title: "Review and testing of gwasurvivr: an R package for genome-wide
 survival analysis"
 
 author:
-- Nadia
-- Ivy
-- Gabriel
-- Piotr
+- Nadia Achatoui
+- Ivy Tumoine
+- Gabriel Abrantes Diaz
+- Piotr Migdałek
 
 output:
   pdf_document: default
   html_document:
     df_print: paged
-date: "2023-10-05"
+date: "2023-10-15"
+
+header-includes:
+ \usepackage{float}
+ \floatplacement{figure}{H}
 ---
 
 ```{r setup, include=FALSE}
@@ -20,13 +24,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #for installing the packages
 
-install.packages("tinytex")
-tinytex::install_tinytex()
-if (!requireNamespace("BiocManager", quietly=TRUE))
-   install.packages("BiocManager")
-BiocManager::install("gwasurvivr", version = "devel")
-install.packages("devtools")
-devtools::install_github("kupietz/kableExtra")
+#install.packages("tinytex")
+#tinytex::install_tinytex()
+#if (!requireNamespace("BiocManager", quietly=TRUE))
+#   install.packages("BiocManager")
+#BiocManager::install("gwasurvivr", version = "devel")
+#install.packages("devtools")
+#devtools::install_github("kupietz/kableExtra")
 
 library(gwasurvivr)
 options("gwasurvivr.cores"=4) 
@@ -49,35 +53,50 @@ In this paper, we thoroughly examine the functionalities of gwasurvivr and offer
 
 ## Methods
 
-gwasurvivr implements a very common survival analysis model : the Cox proportional hazards regression model. This part focuses on the theory and algorithms behind survival analysis, Cox proportional hazards model and the way the authors implemented it.
+`gwasurvivr` implements a very common survival analysis model -- the Cox proportional hazards regression model. This part focuses on the theory and algorithms behind survival analysis, Cox proportional hazards model and the way the authors implemented it.
 
-Survival Analysis is a method for analyzing time-to-event data, i.e. to estimate the time until an event occurs. We call this amount of time the survival time. One key concept in survival analysis is the hazard function $h(t)$. This function represents the instantaneous potential at time t for getting the event, given survival up to time t. The hazard function is really useful because it allows us to draw the survival curve S(t) which is is the probability of the survival time to be greater or equal to t. Most of the time we empirically compute the survival curve from the data, thus obtaining a Kaplan-Meier curve. So for instance if we take t equals to 5 weeks, we will read on the Kaplan-Meier curve the probability of the survival time to be greater or equal to 5 weeks.
+Survival Analysis is a set of methods for analyzing time-to-event data, i.e. to estimate the time until an event occurs. We call this amount of time the survival time. One key concept in survival analysis is the hazard function denoted as $h(t)$. This function represents the instantaneous potential at time $t$ for getting the event, given survival up to time t. The hazard function is really useful because it allows us to draw the survival curve denoted as $S(t)$ which is is the probability of the survival time to be greater or equal to $t$. Most of the time we empirically compute the survival curve from the data, thus obtaining a Kaplan-Meier curve. So for instance if we take $t$ equals to 5 weeks, we will read on the Kaplan-Meier curve the probability of the survival time to be greater or equal to 5 weeks.
 
-![](Capture d’écran du 2023-10-05 18-24-24.png)
+```{r KM, echo=F, fig.align='center', fig.cap="Survival function and Kaplan-Meier estimator.",}
+knitr::include_graphics("KMcurves.jpg")
+```
 
-But in survival analysis we are not so much interested in survival time as in what influences this survival time like taking a drug, smoking, having antecedents\... The Cox proportional hazards regression model allows us to dos so : the new hazard function does not depend only on the time but also on some factors that may influence survival time. We note the new hazard function as follow :
+But in survival analysis we are not so much interested in survival time as in what influences this survival time like taking a drug, smoking, having antecedents\... The Cox proportional hazards regression model allows us to do so the new hazard function does not depend only on the time but also on some factors that may influence survival time. We note the new hazard function as follows:
 
-$h(t, X) = h_{0}(t)\exp(Xβ)$
+$$
+\begin{aligned}
+h(t, X) = h_{0}(t)\exp(X\beta)
+\end{aligned}
+$$
 
-$h_{0}(t)$ is the baseline hazard depending only on the time, $X$ is the vector of factors of an individual (note that those factors do not depend on time) and $β$ is the vector of the coefficients associated with those factors. For instance, if we have $age$ and $sex$ as two explanatory factors, the coefficients associated with those factors $β1$ and $β2$, and $β0$ the intercept,the instantaneous potential at time t for getting the event, given survival up to time t and $age$ and $sex$ is :
+$h_{0}(t)$ is the baseline hazard depending only on the time, $X$ is the vector of factors of an individual (note that those factors do not depend on time) and $\beta$ is the vector of the coefficients associated with those factors. For instance, if we have $age$ and $sex$ as two explanatory factors, the coefficients associated with those factors $\beta_1$ and $\beta_2$, and $\beta_0$ the intercept,the instantaneous potential at time $t$ for getting the event, given survival up to time $t$ and $age$ and $sex$ is:
+$$
+\begin{aligned}
+h(t, X) = h_{0}(t)exp(\beta_{0} + \beta_{1}.age+\beta_{2}.sex)
+\end{aligned}
+$$
+In order to estimate $\beta$, we use the partial log-likelihood. First let's understand the partial likelihood:
 
-$h(t, X) = h_{0}(t)exp(β_{0} + β_{1}.age+β_{2}.sexe)$
+$$
+\begin{aligned}
+PL(\beta)=\prod_{i:\delta_{i}=1}^{}\frac{exp(\sum_{j=1}^{p}x_{ij}\beta_{j})}{\sum_{i':y_{i'}\ge y_{i}}^{}exp(\sum_{j=1}^{p}x_{i'j}\beta_{j})}
+\end{aligned}
+$$
+Where $\delta$ is the set of individuals for which an event has occurred at time $y_i$, and the $i'$ are all the at risk individuals at time $y_i$. We can thus interpret the fraction as the probability of the individual who died to actually die, as the probability of observing what we observed. The partial likelihood is just the product for each individual died at time $y_i$. Finally we obtain the partial log-likelihood by taking the log of the partial likelihood:
 
-In order to estimate $β$, we use the partial log-likelihood. First let's understand the partial likelihood :
+$$
+\begin{aligned}
+L(\beta)=\sum_{i:\delta_{i}=1}^{}X_{i}^{T}\beta-\log(\sum_{i':y_{i'}\ge y_{i}}^{}exp(X_{i'}^{T}\beta))
+\end{aligned}
+$$
 
-$PL(β)=\prod_{i:\delta_{i}=1}^{}\frac{exp(\sum_{j=1}^{p}x_{ij}\beta_{j})}{\sum_{i':y_{i'}\ge y_{i}}^{}exp(\sum_{j=1}^{p}x_{i'j}\beta_{j})}$
-
-Where $δ$ is the set of individuals for which an event has occurred at time $yi$, and the $i'$ are all the at risk individuals at time $yi$. We can thus interpret the fraction as the probability of the individual who died to actually die, as the probability of observing what we observed. The partial likelihood is just the product for each individual died at time $yi$. Finally we obtain the partial log-likelihood by taking the log of the partial likelihood :
-
-$L(\beta)=\sum_{i:\delta_{i}=1}^{}X_{i}^{T}\beta-\log(\sum_{i':y_{i'}\ge y_{i}}^{}exp(X_{i'}^{T}\beta))$
-
-By optimizing this function over $β$ we will maximize the probability of observing the actual observations.
+By optimizing this function over $\beta$ we will maximize the probability of observing the actual observations.
 
 The authors are interesting in conducting survival analyses with million of SNPs, so the optimization of the partial likelihood takes an important number of iterations in the original R-package *survival* (coxph, Therneau and Grambsch, 2000). In order to reduce the number of iterations, the authors decided to modify the *survival* R-package : first the Cox proportional hazard model is fitted with all the non-genetic covariates (i.e. the SNP is not included). Then those estimate parameters are used as initial points for fitting the model with the SNP covariate.
 
 ## Datasets
 
-`gwasurvivr` provides multiple functions to run a Survival analyses. The functions
+`gwasurvivr` provides multiple functions to run a survival analysis. The functions
 accept a file containing SNPs in different formats which is indicated by the 
 respective name, e.g. `.gds` format is run by the method `gdsCoxSurv`. Each function
 also needs a file which contains the meta data of patients, like sex, survival time,
@@ -87,28 +106,29 @@ An example dataset is provided in the extdata folder which is automatically
 installed with `gwasurvivr` containing all supported dataformats, including
 `.gds`, `IMPUTE2`, `.vcf` or related formats from the Michigan or Sanger imputation
 Server or the, `.bed` files or related formats generated by the programme 
-`PLINK` or its successor `PLINK2`
+`PLINK` or its successor `PLINK2`.
 
 ## Results
 
-```{r benchmark, echo=F}
+### Benchmarking
+
+The performance analysis was conducted by benchmarking `gwasurvivr` against other software tools (`genipe`, `SurvivalGWAS_SV`, and `GWASTools`) in terms of runtime and scalability. Developers of the package visualized the results of the benchmarking experiments in the original paper, which are presented on the picture below consisting of figures A, B, C, and D.
+
+```{r benchmark, echo=F, fig.align='center', fig.cap="Benchmarking results of the scalability and runtime comparisons of `gwasurvivr package.`"}
 knitr::include_graphics("benchmark.png")
 ```
-The performance analysis was conducted by benchmarking gwasurvivr against other software tools (genipe, SurvivalGWAS_SV, and GWASTools) in terms of runtime and scalability. It is possible to visualize the results of the benchmarking experiments in figures A, B, C, and D above. 
 
-* Benchmarking experiments:
 The performance of gwasurvivr was benchmarked under different conditions, including varying sample sizes, SNP numbers, and the number of covariates (4, 8, 12). It is then compared with other existing software for genome-wide survival analysis. 
 
 Analyses were run with identical CPU constraints of 1 node and 8 cores. All runtimes are for 100 batched jobs. The benchmarking experiments included a GWAS with approximately 6 million SNPs for 3000, 6000, and 9000 samples.
 
-* Results from benchmarking:
-The study's findings are illustrated through four key figures. Figure A provides a comprehensive comparison of runtime for survival analyses across various sample sizes (100, 1000, 5000) and 100,000 SNPs, highlighting Gwasurvivr's superior performance in most cases, except for scenarios where it lagged slightly behind SurvivalGWAS_SV with an N of 1000. In Figure B, the impact of covariate numbers (5, 8, or 12) on runtime is explored, revealing minimal effects on gwasurvivr's performance compared to other software. Figure C explores how gwasurvivr's runtime increases with larger sample sizes which could lead to RAM constraints, and introduces the "keepGDS" argument  (which permits to keep compressed GDS files after the initial run) as a means to mitigate this. Finally, Figure D illustrates the full GWAS runtimes, showcasing the adaptability of gwasurvivr, which processes subsets of data to overcome memory limitations when varying sample sizes and utilizing a cluster job scheduler.
+The study's findings are illustrated through four key figures. Figure A provides a comprehensive comparison of runtime for survival analyses across various sample sizes (100, 1000, 5000) and 100,000 SNPs, highlighting `gwasurvivr`'s superior performance in most cases, except for scenarios where it lagged slightly behind `SurvivalGWAS_SV` with an N of 1000. In Figure B, the impact of covariate numbers (5, 8, or 12) on runtime is explored, revealing minimal effects on `gwasurvivr`'s performance compared to other software. Figure C explores how `gwasurvivr`'s performance changes due to compression from IMPUTE2 format to GDS and compares the runtimes obtained by the `SurvivalGWAS_SV` package (Figure D). It's clear that `gwasurvivr` clearly outperforms its main competitor consdiering this task.
 
-* Benchmarking conclusion:
-Gwasurvivr is highlighted as significantly faster and more scalable when dealing with increasing sample sizes, the number of SNPs, and covariates. It is also more flexible and offers different input and output options. Gwasurvivr is noted for overcoming memory limitations typically associated with R by processing data in subsets, enabling genome-wide survival analyses on standard laptop computers. Gwasurvivr emerges as a favorable option for researchers, especially when confronted with large datasets and significant computational requirements.
+The computational efficiency of the package origins from adapting highly efficient `parallel` `R` package for internal parallelization to fit the Cox PH models. Linux/OS X users can run analyses on a prespecified number of cores by setting the option in the `R` session using command `options("gwasurvivr.cores"=detectCores())`. This option should be defined in the R session before running any of the `gwasurvivr` functions. Unfortunately this option is not available to Windows users, but they can set up cluster object to speed up computing using `makeCluster(detectCores())` syntax.
 
-TO DO:
-[desribe results (performance), parallelization, server implementation viability] ==> I did smthg up there don't hesitate to modify :)
+Gwasurvivr is highlighted as significantly faster and more scalable when dealing with increasing sample sizes, the number of SNPs, and covariates. It is also more flexible and offers different input and output options. Gwasurvivr is noted for overcoming memory limitations typically associated with R by processing data in subsets, enabling genome-wide survival analyses on standard laptop computers. Gwasurvivr emerges as a favorable option for researchers, especially when confronted with large datasets and significant computational requirements. In second part of results analysis we will discuss different use cases for different functions (or data types) and we will test it on the available data. First analyzed data format comes from Michigan Imputation Server. 
+
+### Use cases
 
 Michigan Imputation Server pre-phases typed genotypes using HAPI-UR, SHAPEIT, or EAGLE (default is EAGLE2), imputes using Minimac3 imputation engine and outputs Blocked GNU Zip Format VCF files (`.vcf.gz`). These `vcf.gz` files with addition of `.txt` files representing phenotype are used as an input for cox regression in `gwasurvivr` package.
 
@@ -130,14 +150,13 @@ pheno.file <- read.table(pheno.fl,
                          sep=" ", 
                          header=TRUE,
                          stringsAsFactors = FALSE)
-head(pheno.file) %>% kable(booktabs=F, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
+head(pheno.file) %>% kable(booktabs=F, linesep = "", caption = "Simulated phenotype feature dataframe.") %>% kable_styling(latex_options = c("HOLD_position"))
 
 #decoding sex into binary format
 pheno.file$SexFemale <- ifelse(pheno.file$sex=="female", 1L, 0L)
 ```
 
 Now using phenotype file as covariate file and given loaded VCF file we can run `michiganCoxSurv` function, which is a wrapper for Cox regression model (before running the function, `sex` column was encoded into binary format).  
-
 ```{r cox regression, echo=T, eval=F, cache=T}
 michiganCoxSurv(vcf.file=vcf.file,
                 covariate.file=pheno.file,
@@ -155,20 +174,20 @@ michiganCoxSurv(vcf.file=vcf.file,
                 clusterObj=NULL) #for setting up cluster for computations
 ```
 
-Functions saves the outputed model with the `.coxph` extension as a seperate file as well as SNPs removed (due to low variance or user defined thresholds) in the `.snps_removed` file. Accessed results of the performed regression are showcased below (`print covs = "only"` was chosen as a printing option, which omits some covariates).
+Functions saves the outputed model with the `.coxph` extension as a seperate file as well as SNPs removed (due to low variance or user defined thresholds) in the `.snps_removed` file. Accessed results of the performed regression are showcased below (`print covs = "only"` was chosen as a printing option, which omits some covariates` characheristics).
 
 ```{r coxph results, echo=F}
 michigan_only <- read.table("michigan_only.coxph", sep="\t", header=TRUE, stringsAsFactors = FALSE) %>% t()
-kable(michigan_only, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
+kable(michigan_only, linesep = "", caption = "Results of the survival analysis using Cox regression model with SNP covariates.") %>% kable_styling(latex_options = c("HOLD_position"))
 ```
 
-To decipher most column names and extract knowledge from the output table in the appendix section explains the meaning of certain variables. 
+To decipher most column names and extract knowledge from the output we included Table 3 in the appendix section, which explains the meaning of certain variables. 
 
-Column PVALUE holds results for significance test of the SNP covariates (rest of the results is omitted by the printing option). It can be stated that on level of significance 0.05 SNP covariates (all pvalues above 0.05) can be deemed as insignificant as $H_0: coef_i = 0$. Drawn conclusion seems sensible as phenotype file was generated randomly.  
+Looking at the printed output, column PVALUE holds results for significance test of the SNP covariates (rest of the results is omitted by the printing option). It can be stated that on level of significance 0.05, SNP covariates (all pvalues above 0.05) can be deemed as insignificant as $H_0: coef_i = 0$. Drawn conclusion seems sensible as phenotype file was generated randomly.  
 
-Package offers also adding SNP covariate interactions during the modelling. Setting option `inter.term` to name(s) of the variable(s), in our case `DrugTxYes`, will include these interactions during training of the regression models. Table with all (`print.covs="all"`) information about covariates is attached in the appendix. Additionally pvalues for the significance test, hazard ratios and confidence intervals for them, Z scores, coefficents and their standard errors can be obtained for all the covariates. 
+Package offers also adding SNP covariate interactions during the modelling. Setting option `inter.term` to name(s) of the variable(s), in our case `DrugTxYes`, will include these interactions during training of the regression models. Table 4 with all (`print.covs="all"`) information about covariates is attached in the appendix. Additionally pvalues for the significance test, hazard ratios and confidence intervals for them, Z scores, coefficents and their standard errors can be obtained for all the covariates. 
 
-Analyzing the full table of the results gives us a whole picture about performance of the covariates. Looking again at pvalues, now it's clear that only `age` can be deemed significant in this statistical inference framework.
+Analyzing the full table of the results gives us a whole picture about performance of the covariates. Looking again at pvalues, now it's clear that only `age` can be deemed as significant in this statistical inference framework.
 
 ```{r coxph interactions, echo=F, cache=T}
 michiganCoxSurv(vcf.file=vcf.file,
@@ -187,25 +206,27 @@ michiganCoxSurv(vcf.file=vcf.file,
                 clusterObj=NULL)
 ```
 
-Creators of the package included three more modifications of Cox proportional hazard regression for different data types. 
+Additionally, creators of the package included three more modifications of Cox proportional hazard regression for different data types. 
 
 `sangerCoxSurv`is the function which handles data formats obtained from Sanger Imputation Server, which pre-phases typed genotypes using either SHAPEIT or EAGLE, imputes genotypes using PBWT algorithm and outputs a .vcf.gz file for each chromosome. This cox regression wrapper allows the user to filter on info score (imputation quality metric) and minor allele frequency from the reference panel used for imputation using `RefPanelAF` as the input arguement for `maf.filter`. Users are also provided with the sample minor allele frequency in the output file. Syntax of the function and overall use cases are the same as in previously described `michiganCoxSurv`.
 
 Another format which is handled by the package is IMPUTE2 generated output. IMPUTE2 is a genotype imputation and haplotype phasing program. It outputs 6 files for each chromosome chunk imputed, but only 2 of these files are required for analyses using `gwasurviv`. Loading and pre-processing of the genetic and phenotypic data is conducted as before. To perform survival analysis using IMPUTE2 the function arguments are very similar to `michiganCoxSurv` and `sangerCoxSurv`, however the function now takes a chromosome argument. This is needed to properly annotate the file output with the chromosome that these SNPs are in. Moreover, function `gdsCoxSurv` allows to performs survival analysis on genetic data, which was converted from IMPUTE2 format to GDS format.
 
-Additionaly, authors are also mentioning wrapper `plinkCoxSurv`, which handles data in PLINK format (`.BED`, `.BIM` and `.FAM` files). Pre-processing, syntax and usage of the function is identical to previously desribed solutions. 
+Additionaly, authors are also mentioning wrapper `plinkCoxSurv`, which handles data in PLINK format (`.BED`, `.BIM` and `.FAM` files). Pre-processing, syntax and usage of the function is identical to previously described solutions. 
 
 ## Conclusions
 
-`gwasurvivr`, an R package tailored for the analysis of survival outcomes in Genome-Wide Association Studies (GWAS), offers several notable advantages. It seamlessly integrates GWAS results with survival analysis, making it an accessible tool for researchers seeking to explore the genetic variants' influence on survival outcomes. 
+`gwasurvivr`, an R package tailored for the analysis of survival outcomes in Genome-Wide Association Studies (GWAS), offers several notable advantages and improvements. It seamlessly integrates GWAS results with survival analysis, making it an accessible tool for researchers seeking to explore the genetic variants' influence on survival outcomes. 
 
-Its seems user-friendly at first glance, as use cases are described in the vignette, but syntax and storage of the output in the external file makes it more gimmicky. Moreover, output is just a table with some metrics not a proper coxph object, which makes it harder to do inference and integrate it with different software concerning survival analysis.  
+Its seems user-friendly at first glance, as use cases are described in the vignette, but syntax and storage of the output in the external file makes it more gimmicky. Moreover, output is just a table with some metrics not a proper model object, which makes it harder to do inference and integrate it with different software concerning survival analysis.  
 
 One of its main strengths is inclusion of handling diverse data format used for survival analysis inference, but then no visualization tools were added on top of cox regression wrappers.
 
 Capacity to handle extensive datasets was the main focus of the developers. The goal was clearly achieved as the package is overall fast, has premium options for fast computing, parallelization and setting up clusters to speed up the fitting process.   
 
-In conclusion, `gwasurvivr` is a viable options for researchers trying to incorporate genom-wide studies into survival analysis framework due to fast compuation time and fairly easy syntax. However, it has some limitations, primarily focusing on compatibility with other survival analysis framework and requiring a working knowledge of R, data preparation, and potentially resource-intensive computations. Users should also keep an eye on updates and maintenance, as with any R package.
+In conclusion, `gwasurvivr` is a viable options for researchers trying to incorporate genom-wide studies into survival analysis framework due to fast compuation time and fairly easy syntax. However, it has some limitations, primarily focusing on compatibility with other survival analysis frameworks and requiring a working knowledge of R, data preparation, and potentially resource-intensive computations. Users should also keep an eye on updates and maintenance, as with any `R` package.
+
+\newpage
 
 ## Appendix
 
@@ -233,7 +254,9 @@ In conclusion, `gwasurvivr` is a viable options for researchers trying to incorp
 |N |	Number of individuals in sample being tested|
 |NEVENT |	Number of events that occurred in sample being tested|
 
+Table: Decriptions of the output of the Cox regression fucntions from the `gsurvivr` package
+
 ```{r coxph results int, echo=F}
 michigan_some <- read.table("michigan_intx_some.coxph", sep="\t", header=TRUE, stringsAsFactors = FALSE) %>% t()
-kable(michigan_some, linesep = "") %>% kable_styling(latex_options = c("HOLD_position"))
+kable(michigan_some, linesep = "", caption = "Full results of the survival analysis using Cox regression model with SNP covariates and interactions.") %>% kable_styling(latex_options = c("HOLD_position"))
 ```
